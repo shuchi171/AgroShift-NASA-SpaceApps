@@ -32,7 +32,7 @@ The system fetches daily agroclimatology data dynamically using the **NASA POWER
 
 ![Dashboard Preview](project_screenshots/Screenshot0.png)
 
-![Dashboard Preview](project_screenshots/Screenshot1.png)
+![Dashboard Preview](project_screenshots/Screenshot2.png)
 
 
 ## 🛠️ Tech Stack
