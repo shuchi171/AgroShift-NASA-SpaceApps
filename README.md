@@ -31,6 +31,8 @@ The system fetches daily agroclimatology data dynamically using the **NASA POWER
 ## 📸 Dashboard Preview
 
 ![Dashboard Preview](project_screenshots/Screenshot0.png)
+![Dashboard Preview](project_screenshots/Screenshot1.png)
+
 
 ## 🛠️ Tech Stack
 - **Language:** Python
