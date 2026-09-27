@@ -28,6 +28,9 @@ The system fetches daily agroclimatology data dynamically using the **NASA POWER
 - **Dashboard:** Interactive web application built with Streamlit and deployed via Cloudflare Tunnel.
 
 ---
+## 📸 Dashboard Preview
+
+![Dashboard Preview](project_screenshots/Screenshot0.png)
 
 ## 🛠️ Tech Stack
 - **Language:** Python
