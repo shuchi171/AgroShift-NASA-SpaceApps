@@ -1,14 +1,10 @@
-%%writefile app.py
 import json
 import os
-from datetime import datetime, timedelta
-import numpy as np
+import math
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 import requests
 import streamlit as st
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import train_test_split
 
 st.set_page_config(
     page_title="AgroShift | NASA-Powered Crop Rotation Engine",
@@ -39,8 +35,8 @@ NASA_POWER_BASE = "https://power.larc.nasa.gov/api/temporal/daily/point"
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_nasa_environmental_data(lat: float, lon: float):
-    end_date = datetime.utcnow() - timedelta(days=4)
-    start_date = end_date - timedelta(days=90)
+    end_date = datetime.now(timezone.utc) - timedelta(days=4)
+    start_date = end_date - timedelta(days=89)  # Inclusive 90-day window
 
     start_str = start_date.strftime("%Y%m%d")
     end_str = end_date.strftime("%Y%m%d")
@@ -79,7 +75,8 @@ def fetch_nasa_environmental_data(lat: float, lon: float):
             val_rh = rh2m.get(d, -999)
             val_gw = gwettop.get(d, -999)
 
-            if -999 in (val_t, val_p, val_rh, val_gw):
+            values = (val_t, val_p, val_rh, val_gw)
+            if any(not isinstance(v, (int, float)) or not math.isfinite(v) or v == -999 for v in values):
                 continue
 
             records.append(
@@ -100,13 +97,27 @@ def fetch_nasa_environmental_data(lat: float, lon: float):
         return (df, date_range_str), None
 
     except requests.exceptions.Timeout:
-        return None, "NASA POWER API request timed out. Using local fallback estimates."
+        return None, "NASA POWER API request timed out."
     except Exception as e:
         return None, f"Network or parsing error: {str(e)}"
 
 # ---------------------------------------------------------
 # Recommendation Engine: Transparent Multi-Factor Scoring
 # ---------------------------------------------------------
+def normalize_crop_name(name: str):
+    """Match database IDs, full display names, and short sidebar names."""
+    return "".join(name.split(" (")[0].split(" / ")[0].casefold().split())
+
+
+def resolve_crop(crops: list, name: str):
+    key = normalize_crop_name(name)
+    return next(
+        (crop for crop in crops if key in
+         (normalize_crop_name(crop["id"]), normalize_crop_name(crop["name"]))),
+        None,
+    )
+
+
 def compute_rotation_recommendations(
     crops: list,
     current_crop_name: str,
@@ -118,12 +129,16 @@ def compute_rotation_recommendations(
     total_rain = env_summary["total_rain"]
     mean_wetness = env_summary["mean_wetness"]
 
+    current = resolve_crop(crops, current_crop_name)
     results = []
 
     for crop in crops:
+        # Exclude the current crop before any scoring, including display-name aliases.
+        if current and crop["id"] == current["id"]:
+            continue
         score_breakdown = {}
 
-        # 1. Climate Suitability (30%)
+        # 1. Climate Suitability (30 points)
         if crop["temp_min"] <= mean_temp <= crop["temp_max"]:
             temp_sub = 15.0
         else:
@@ -143,7 +158,7 @@ def compute_rotation_recommendations(
 
         score_breakdown["Climate Suitability"] = round(temp_sub + moist_sub, 1)
 
-        # 2. Soil Compatibility (25%)
+        # 2. Soil Compatibility (25 points)
         if soil_type in crop["preferred_soils"]:
             score_breakdown["Soil Compatibility"] = 25.0
         elif any(s in soil_type for s in ["Loam", "Sandy"]):
@@ -151,36 +166,32 @@ def compute_rotation_recommendations(
         else:
             score_breakdown["Soil Compatibility"] = 10.0
 
-        # 3. Rotation Fit (25%)
-        is_same_crop = crop["name"].lower().startswith(
-            current_crop_name.lower()
-        ) or (current_crop_name.lower() in crop["name"].lower())
-        is_incompatible = current_crop_name in crop.get("incompatible_preceding", [])
+        # 3. Rotation Fit (25 points)
+        same_family = current is not None and crop["family"] == current["family"]
+        is_incompatible = any(
+            resolve_crop(crops, name) == current if current is not None
+            else normalize_crop_name(name) == normalize_crop_name(current_crop_name)
+            for name in crop.get("incompatible_preceding", [])
+        )
 
-        if is_same_crop or is_incompatible:
+        if same_family or is_incompatible:
             rotation_score = 4.0
-        elif (
-            current_crop_name.lower() in ["rice", "wheat", "maize"]
-            and crop["is_legume"]
-        ):
+        elif current and current["family"] == "Poaceae" and crop["is_legume"]:
             rotation_score = 25.0
-        elif (
-            current_crop_name.lower() in ["lentil", "chickpea", "mung bean"]
-            and not crop["is_legume"]
-        ):
+        elif current and current["is_legume"] and not crop["is_legume"]:
             rotation_score = 24.0
         else:
             rotation_score = 18.0
 
         score_breakdown["Rotation Fit"] = float(rotation_score)
 
-        # 4. Priority Alignment (20%)
+        # 4. Priority Alignment (20 points)
         p_score = 10.0
         if priority == "Water Conservation":
             p_score = 20.0 if crop["water_need"] == "Low" else (14.0 if crop["water_need"] == "Medium" else 5.0)
         elif priority == "Soil Health Restoration":
             p_score = 20.0 if crop["is_legume"] else (16.0 if "Biofumigation" in crop["soil_benefit"] else 8.0)
-        elif priority == "Yield & Profit Optimization":
+        elif priority == "Yield Potential":
             p_score = 20.0 if crop["yield_potential"].startswith("High") or crop["yield_potential"].startswith("Very high") else 14.0
         elif priority == "Climate & Drought Resilience":
             p_score = 20.0 if "drought" in crop["climate_resilience"].lower() else 12.0
@@ -199,43 +210,8 @@ def compute_rotation_recommendations(
     results.sort(key=lambda x: x["total_score"], reverse=True)
     return results
 
-# ---------------------------------------------------------
-# Experimental Drought Evaluation (Random Forest)
-# ---------------------------------------------------------
-def run_experimental_drought_eval(df: pd.DataFrame):
-    df_ml = df.copy()
-    df_ml["Target_Drought_Stress"] = (df_ml["Surface_Soil_Wetness_0_1"] < 0.35).astype(int)
-    df_ml["Rain_Rolling_3D"] = df_ml["Precipitation_mm"].rolling(window=3, min_periods=1).mean()
-
-    features = [
-        "Temperature_C",
-        "Relative_Humidity_pct",
-        "Precipitation_mm",
-        "Rain_Rolling_3D",
-    ]
-    X = df_ml[features]
-    y = df_ml["Target_Drought_Stress"]
-
-    if y.nunique() <= 1:
-        return None, "Not enough variance in target classes to evaluate model."
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, shuffle=False)
-
-    clf = RandomForestClassifier(n_estimators=40, max_depth=3, random_state=42)
-    clf.fit(X_train, y_train)
-
-    train_acc = accuracy_score(y_train, clf.predict(X_train)) * 100
-    test_acc = accuracy_score(y_test, clf.predict(X_test)) * 100
-
-    latest_vector = X.iloc[[-1]]
-    latest_prob = clf.predict_proba(latest_vector)[0][1] * 100
-
-    return {
-        "train_acc": train_acc,
-        "test_acc": test_acc,
-        "latest_prob": latest_prob,
-        "sample_count": len(df_ml),
-    }, None
+def format_coordinates(lat: float, lon: float):
+    return f"{abs(lat):.2f}° {'N' if lat >= 0 else 'S'}, {abs(lon):.2f}° {'E' if lon >= 0 else 'W'}"
 
 # ---------------------------------------------------------
 # Sidebar Inputs
@@ -257,7 +233,7 @@ if selected_preset == "Custom Coordinates":
     lon = st.sidebar.number_input("Longitude (-180 to +180)", value=90.41, min_value=-180.0, max_value=180.0, step=0.01)
 else:
     lat, lon = coord_options[selected_preset]
-    st.sidebar.caption(f"Coordinates: **{lat}°, {lon}°**")
+    st.sidebar.caption(f"Coordinates: **{format_coordinates(lat, lon)}**")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🌱 Current Field Agronomy")
@@ -279,7 +255,7 @@ priority = st.sidebar.selectbox(
     [
         "Water Conservation",
         "Soil Health Restoration",
-        "Yield & Profit Optimization",
+        "Yield Potential",
         "Climate & Drought Resilience",
     ],
     index=0,
@@ -290,31 +266,31 @@ priority = st.sidebar.selectbox(
 # ---------------------------------------------------------
 st.title("AgroShift")
 st.markdown(
-    "### AI & NASA-Assisted Crop-Rotation Decision Support System\n"
-    "*Adapting farm rotation sequences to seasonal climate shifts, soil characteristics, and biological synergies.*"
+    "### NASA-Assisted Crop-Rotation Decision Support System\n"
+    "*Supporting next-crop choices using recent climate, soil characteristics, and crop rotation.*"
 )
 
-with st.spinner("Connecting to NASA POWER Satellite Climatology API..."):
+with st.spinner("Connecting to NASA POWER Agroclimatology API..."):
     data_tuple, err = fetch_nasa_environmental_data(lat, lon)
 
 if err or not data_tuple:
-    st.warning(f"NASA POWER Live Connection Notice: {err}")
-    st.info("Generating synthetic regional baseline based on coordinate physics to allow evaluation.")
-    dates = pd.date_range(end=datetime.today(), periods=60)
-    df_env = pd.DataFrame(
-        {
-            "Date": dates,
-            "Temperature_C": np.random.normal(26.0, 3.5, 60),
-            "Precipitation_mm": np.random.exponential(2.0, 60),
-            "Relative_Humidity_pct": np.random.normal(68.0, 8.0, 60),
-            "Surface_Soil_Wetness_0_1": np.random.uniform(0.25, 0.65, 60),
-        }
-    )
-    date_label = f"{dates[0].strftime('%b %d, %Y')} to {dates[-1].strftime('%b %d, %Y')}"
-else:
-    df_env, date_label = data_tuple
+    st.error("⚠ NASA POWER DATA UNAVAILABLE — recommendations are paused.")
+    st.warning(err or "No environmental data were returned.")
+    st.info("No synthetic observations are generated. Retry the NASA connection to obtain recommendations.")
+    if st.button("Retry NASA POWER"):
+        fetch_nasa_environmental_data.clear()
+        st.rerun()
+    st.stop()
 
-recent_window = df_env.tail(30)
+df_env, date_label = data_tuple
+
+recent_window = df_env[df_env["Date"] >= df_env["Date"].max() - timedelta(days=29)]
+if len(recent_window) < 30:
+    st.error("NASA POWER returned incomplete data for the latest 30-day period. Recommendations are paused.")
+    if st.button("Retry NASA POWER"):
+        fetch_nasa_environmental_data.clear()
+        st.rerun()
+    st.stop()
 mean_temp = recent_window["Temperature_C"].mean()
 total_rain = recent_window["Precipitation_mm"].sum()
 mean_rh = recent_window["Relative_Humidity_pct"].mean()
@@ -333,10 +309,10 @@ col1, col2, col3, col4 = st.columns(4)
 col1.metric("Current Standing Crop", current_crop)
 col2.metric("Soil Texture", soil_type)
 col3.metric("Farmer Primary Goal", priority)
-col4.metric("Coordinates", f"{lat:.2f}N, {lon:.2f}E")
+col4.metric("Coordinates", format_coordinates(lat, lon))
 
 # 2. Environmental Conditions
-st.subheader("2. NASA Regional Environmental Observations")
+st.subheader("2. NASA POWER Regional Environmental Context")
 st.caption(f"Data Source: **NASA POWER (Daily Agroclimatology)** | Observation Window: **{date_label}**")
 
 m1, m2, m3, m4 = st.columns(4)
@@ -346,12 +322,12 @@ m3.metric("Relative Humidity", f"{mean_rh:.1f} %")
 m4.metric("Top-Soil Wetness (0-1)", f"{mean_wetness:.2f}")
 
 st.info(
-    "**Measurement Clarification:** NASA POWER values represent gridded satellite observations (0.5° resolution) "
+    "**Measurement Clarification:** NASA POWER meteorological values are gridded reanalysis estimates (approximately 0.5° × 0.625°) "
     "providing regional environmental context, rather than field-level physical sensors.",
     icon="🛰️",
 )
 
-with st.expander("View 60-Day Climate & Soil Wetness History"):
+with st.expander("View 90-Day Climate & Soil Wetness History"):
     st.line_chart(
         df_env.set_index("Date")[
             [
@@ -364,6 +340,8 @@ with st.expander("View 60-Day Climate & Soil Wetness History"):
 
 # 3. Crop-Rotation Recommendations
 st.subheader("3. Top Recommended Next Crops for Rotation")
+st.caption("Heuristic score out of 100: climate 30 points, soil 25, rotation 25, farmer priority 20. "
+           "This is not a probability or a forecast of yield or profit.")
 ranked_crops = compute_rotation_recommendations(crop_db, current_crop, soil_type, priority, env_summary)
 top_3 = ranked_crops[:3]
 
@@ -375,7 +353,7 @@ for i, item in enumerate(top_3):
 
     with cols[i]:
         st.markdown(f"#### #{i+1}. {crop['name']}")
-        st.metric(label="Suitability Score", value=f"{score}%")
+        st.metric(label="Suitability Score", value=f"{score:g}/100")
         st.progress(score / 100.0)
 
         st.markdown("**Suitability Breakdown:**")
@@ -386,34 +364,7 @@ for i, item in enumerate(top_3):
         st.markdown(f"**Climate Profile:**\n{crop['climate_resilience']}")
 
 st.markdown("---")
-st.subheader("Suggested Multi-Season Crop Sequence")
-c1_name = current_crop
-c2_name = top_3[0]["crop"]["name"].split(" (")[0]
-c3_name = top_3[1]["crop"]["name"].split(" (")[0]
-
-st.code(
-    f"[ Season 1: Current ]        →        [ Season 2: Recommended ]        →        [ Season 3: Follow-Up ]\n"
-    f"     {c1_name.center(12)}                          {c2_name.center(14)}                          {c3_name.center(13)}"
-)
-
-# 4. Experimental Drought Risk Module
-with st.expander("🔬 Experimental ML Module: Short-Term Drought Indicator (Review Details)"):
-    st.markdown(
-        """
-        **Model Context:** A lightweight Random Forest classifier trained on lagged moisture and temperature data 
-        evaluating topsoil water deficit risk ($GWETTOP < 0.35$).
-        """
-    )
-    ml_res, ml_err = run_experimental_drought_eval(df_env)
-    if ml_err:
-        st.caption(f"Evaluation note: {ml_err}")
-    else:
-        mc1, mc2, mc3 = st.columns(3)
-        mc1.metric("Out-of-Sample Test Accuracy", f"{ml_res['test_acc']:.1f}%")
-        mc2.metric("Training Set Accuracy", f"{ml_res['train_acc']:.1f}%")
-        mc3.metric("Estimated 7-Day Deficit Risk", f"{ml_res['latest_prob']:.1f}%")
-
-        st.caption(
-            "**Scientific Disclaimer:** Model results are presented as an experimental risk metric evaluated on a strictly "
-            "withheld test split without data leakage. Output is purely advisory."
-        )
+st.subheader("Top Next-Crop Alternatives")
+st.caption(f"Each option is scored as the next crop after {current_crop}. These are alternatives, not a multi-season sequence.")
+for item in top_3:
+    st.write(f"- {item['crop']['name']}")
