@@ -40,9 +40,9 @@ class AppTests(unittest.TestCase):
     def setUp(self):
         st.cache_data.clear()
 
-    def rank(self, current, priority="Water Conservation"):
+    def rank(self, current, priority="Water Conservation", soil="Loam"):
         return self.functions["compute_rotation_recommendations"](
-            self.crops, current, "Loam", priority,
+            self.crops, current, soil, priority,
             {"mean_temp": 26, "total_rain": 60, "mean_wetness": 0.5},
         )
 
@@ -76,14 +76,20 @@ class AppTests(unittest.TestCase):
         self.assertEqual(next(r for r in result if r["crop"]["id"] == "mustard")["breakdown"]["Rotation Fit"], 4)
 
     def test_score_bounds_and_yield_priority(self):
-        for priority in ["Water Conservation", "Soil Health Restoration", "Yield Potential", "Climate & Drought Resilience"]:
-            scores = self.rank("Rice", priority)
-            self.assertEqual(scores, sorted(scores, key=lambda r: r["total_score"], reverse=True))
-            for result in scores:
-                self.assertTrue(0 <= result["total_score"] <= 100)
-                self.assertEqual(result["total_score"], sum(result["breakdown"].values()))
+        soils = {soil for crop in self.crops for soil in crop["preferred_soils"]}
+        for current in ["Fallow (Bare Soil)"] + [crop["name"] for crop in self.crops]:
+            for soil in soils:
+                for priority in ["Water Conservation", "Soil Health Restoration", "Yield Potential", "Climate & Drought Resilience"]:
+                    with self.subTest(current=current, soil=soil, priority=priority):
+                        scores = self.rank(current, priority, soil)
+                        self.assertEqual(scores, sorted(scores, key=lambda r: r["total_score"], reverse=True))
+                        for result in scores:
+                            self.assertTrue(0 <= result["total_score"] <= 100)
+                            self.assertEqual(result["total_score"], sum(result["breakdown"].values()))
         wheat = next(r for r in self.rank("Rice", "Yield Potential") if r["crop"]["id"] == "wheat")
         self.assertEqual(wheat["breakdown"]["Priority Alignment"], 20)
+        rice = next(r for r in self.rank("Fallow (Bare Soil)", soil="Silty Clay") if r["crop"]["id"] == "rice")
+        self.assertEqual(rice["breakdown"]["Soil Compatibility"], 25)
 
     def test_coordinate_hemispheres(self):
         fmt = self.functions["format_coordinates"]
@@ -117,12 +123,22 @@ class AppTests(unittest.TestCase):
         with patch("requests.get", return_value=Mock(status_code=200, json=nasa_payload)):
             app = AppTest.from_file(str(APP)).run(timeout=20)
             self.assertFalse(app.exception)
-            for crop in ["Rice", "Wheat", "Maize", "Mustard", "Lentil"]:
-                app.sidebar.selectbox[1].select(crop).run()
+            crop_options = ["Fallow (Bare Soil)"] + [crop["name"] for crop in self.crops]
+            self.assertEqual(app.sidebar.selectbox[1].options, crop_options)
+            for crop_name in crop_options:
+                app.sidebar.selectbox[1].select(crop_name).run()
                 self.assertFalse(app.exception)
                 cards = [m.value for m in app.markdown if m.value.startswith("#### #")]
                 self.assertEqual(len(cards), 3)
-                self.assertFalse(any(crop in card for card in cards))
+                self.assertFalse(any(crop_name in card for card in cards))
+            supported_soils = {soil for crop in self.crops for soil in crop["preferred_soils"]}
+            self.assertTrue(supported_soils.issubset(set(app.sidebar.selectbox[2].options)))
+            app.sidebar.selectbox[2].select("Silty Clay").run()
+            self.assertFalse(app.exception)
+            self.assertIn("Silty Clay", [m.value for m in app.metric if m.label == "Soil Texture"])
+            for priority in app.sidebar.selectbox[3].options:
+                app.sidebar.selectbox[3].select(priority).run()
+                self.assertFalse(app.exception)
             self.assertTrue(all(m.value.endswith("/100") for m in app.metric if m.label == "Suitability Score"))
             self.assertIn("View 90-Day Climate & Soil Wetness History", [e.label for e in app.expander])
             app.sidebar.selectbox[0].select("Nebraska Corn Belt, US (41.49, -99.90)").run()

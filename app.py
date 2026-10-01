@@ -240,13 +240,15 @@ st.sidebar.subheader("🌱 Current Field Agronomy")
 
 current_crop = st.sidebar.selectbox(
     "Current Standing Crop",
-    ["Rice", "Wheat", "Maize", "Mustard", "Lentil", "Fallow (Bare Soil)"],
+    ["Fallow (Bare Soil)"] + [crop["name"] for crop in crop_db],
     index=0,
 )
 
+soil_options = ["Loam", "Clay Loam", "Sandy Loam", "Silt Loam", "Clay"]
+soil_options += sorted({soil for crop in crop_db for soil in crop["preferred_soils"]} - set(soil_options))
 soil_type = st.sidebar.selectbox(
     "Topsoil Classification",
-    ["Loam", "Clay Loam", "Sandy Loam", "Silt Loam", "Clay"],
+    soil_options,
     index=0,
 )
 
@@ -342,6 +344,8 @@ with st.expander("View 90-Day Climate & Soil Wetness History"):
 st.subheader("3. Top Recommended Next Crops for Rotation")
 st.caption("Heuristic score out of 100: climate 30 points, soil 25, rotation 25, farmer priority 20. "
            "This is not a probability or a forecast of yield or profit.")
+st.caption("Crop attributes are unverified prototype guidance. Benefits depend on cultivar, local conditions, "
+           "and management; seek local agronomic advice before planting.")
 ranked_crops = compute_rotation_recommendations(crop_db, current_crop, soil_type, priority, env_summary)
 top_3 = ranked_crops[:3]
 

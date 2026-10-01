@@ -10,7 +10,7 @@ AgroShift combines farm location, current crop, soil texture, and farmer priorit
 Use Python 3.10 or newer and an internet connection for NASA POWER requests.
 
 ```bash
-git clone https://github.com/samantadas/AgroShift-NASA-SpaceApps.git
+git clone https://github.com/shuchi171/AgroShift-NASA-SpaceApps.git
 cd AgroShift-NASA-SpaceApps
 python -m venv .venv
 ```
@@ -62,7 +62,7 @@ The top three crops are **alternative next crops**, each scored relative to the 
 
 ## Data & References
 
-`crops.json` is a small, manually curated prototype knowledge base. The original repository did not record field-by-field sources. Its exact temperature cutoffs, soil lists, tolerance labels, yield labels, and numeric nitrogen-fixation claims remain **unverified heuristic inputs**. These references provide background and a basis for reviewing the data; they are not evidence that every stored value was extracted from these sources.
+`crops.json` is a small, manually curated prototype knowledge base. The current-crop selector includes every crop in database order plus Fallow (Bare Soil); soil choices include all preferred soils in the database. The original repository did not record field-by-field sources. Its temperature cutoffs, soil lists, tolerance labels, yield labels, and qualitative soil benefits remain **unverified heuristic inputs**. Unsupported numeric nitrogen-fixation, crop-duration, and heat-stress claims have been removed from descriptions. Benefits depend on cultivar, local conditions, and management. These references provide background and a basis for reviewing the data; they are not evidence that every stored value was extracted from these sources.
 
 - [FAO ECOCROP documentation](https://www.fao.org/geospatial/data-and-tools/data-portals/ecocrop/) describes crop temperature, precipitation, and soil requirements. Requirements vary by crop and cultivar; this application is not a direct ECOCROP dataset export.
 - [FAO: Crop Water Needs](https://www.fao.org/4/s2022e/s2022e02.htm) explains differences in water needs by crop, climate, and growth stage, informing interpretation of the simplified Low/Medium/High categories.

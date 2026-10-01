@@ -9,9 +9,9 @@
     "water_need": "Low",
     "preferred_soils": ["Loam", "Sandy Loam", "Clay Loam", "Silt Loam"],
     "incompatible_preceding": ["Lentil", "Chickpea"],
-    "soil_benefit": "Fixes atmospheric nitrogen (~30-50 kg N/ha) and restores depleted soil.",
+    "soil_benefit": "Legume that can contribute biologically fixed nitrogen and support soil fertility.",
     "climate_resilience": "High drought tolerance once established; low water footprint.",
-    "yield_potential": "Moderate economic yield with minimal synthetic fertilizer inputs."
+    "yield_potential": "Moderate yield potential; fertilizer needs depend on soil conditions and management."
   },
   {
     "id": "mustard",
@@ -23,9 +23,9 @@
     "water_need": "Low",
     "preferred_soils": ["Loam", "Sandy Loam", "Clay Loam"],
     "incompatible_preceding": ["Mustard", "Cabbage"],
-    "soil_benefit": "Biofumigation effect suppresses soil-borne nematodes and fungal pathogens.",
-    "climate_resilience": "Moderate water stress tolerance; breaks weed and disease cycles.",
-    "yield_potential": "High market cash-crop value with a short 80-90 day growth cycle."
+    "soil_benefit": "Biofumigation may help suppress some soil-borne pests and pathogens under suitable management.",
+    "climate_resilience": "Moderate water stress tolerance; rotation may help interrupt some weed and disease cycles.",
+    "yield_potential": "High cash-crop potential; growth duration and market value vary by cultivar and local conditions."
   },
   {
     "id": "wheat",
@@ -37,8 +37,8 @@
     "water_need": "Medium",
     "preferred_soils": ["Loam", "Clay Loam", "Silt Loam"],
     "incompatible_preceding": ["Wheat", "Barley"],
-    "soil_benefit": "Dense fibrous root system improves soil structure and aeration.",
-    "climate_resilience": "Sensitive to terminal heat stress above 30°C during grain filling.",
+    "soil_benefit": "Dense fibrous roots can support soil structure and aeration.",
+    "climate_resilience": "Can be sensitive to heat stress during grain filling.",
     "yield_potential": "High caloric and market grain yield under balanced moisture."
   },
   {
@@ -65,9 +65,9 @@
     "water_need": "Low",
     "preferred_soils": ["Sandy Loam", "Loam", "Clay Loam"],
     "incompatible_preceding": ["Chickpea", "Lentil"],
-    "soil_benefit": "High biological nitrogen fixation and deep taproot system.",
-    "climate_resilience": "Extremely drought-resilient; susceptible to waterlogging.",
-    "yield_potential": "High nutritional density and strong market price stability."
+    "soil_benefit": "Legume that can contribute biologically fixed nitrogen; has a deep taproot system.",
+    "climate_resilience": "Can tolerate drought once established; susceptible to waterlogging.",
+    "yield_potential": "High nutritional value; yield and market returns depend on local conditions."
   },
   {
     "id": "mungbean",
@@ -79,9 +79,9 @@
     "water_need": "Low",
     "preferred_soils": ["Loam", "Sandy Loam"],
     "incompatible_preceding": ["Mungbean", "Soybean"],
-    "soil_benefit": "Rapid 60-day legume cover crop that enriches nitrogen.",
+    "soil_benefit": "Short-season legume that can contribute biologically fixed nitrogen and provide soil cover.",
     "climate_resilience": "Tolerates high summer temperatures.",
-    "yield_potential": "Reliable short-season cash return."
+    "yield_potential": "Short-season crop with potential cash returns that vary by local conditions and markets."
   },
   {
     "id": "groundnut",
@@ -93,7 +93,7 @@
     "water_need": "Medium",
     "preferred_soils": ["Sandy Loam", "Loam"],
     "incompatible_preceding": ["Groundnut", "Soybean"],
-    "soil_benefit": "Canopy covers topsoil against erosion and fixes nitrogen.",
+    "soil_benefit": "Canopy cover may help reduce soil erosion; this legume can contribute biologically fixed nitrogen.",
     "climate_resilience": "Resilient in lighter soils.",
     "yield_potential": "High-value edible oil and protein crop."
   },
@@ -107,7 +107,7 @@
     "water_need": "High",
     "preferred_soils": ["Clay", "Clay Loam", "Silty Clay"],
     "incompatible_preceding": ["Rice"],
-    "soil_benefit": "Anaerobic cycles suppress terrestrial soil weeds.",
+    "soil_benefit": "Flooded growing conditions may suppress some terrestrial soil weeds.",
     "climate_resilience": "Low drought tolerance; requires regular water.",
     "yield_potential": "High staple grain yield."
   }
